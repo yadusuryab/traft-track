@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // app/api/admin/images/upload/route.ts
-import { uploadToCloudinary, testCloudinaryConnection } from '@/lib/cloudinary';
+import { uploadToCloudinary } from '@/lib/cloudinary';
 import { connectToDatabase } from '@/lib/mongodb';
 import { detectDocumentType, extractTextFromImage } from '@/lib/vision';
 import Image from '@/models/Image';
@@ -112,7 +112,7 @@ export async function POST(request: Request) {
       { 
         success: false, 
         message: 'Upload failed',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        error: error.message
       },
       { status: 500 }
     );
