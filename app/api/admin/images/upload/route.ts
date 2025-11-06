@@ -9,18 +9,6 @@ import { NextResponse } from 'next/server';
 export async function POST(request: Request) {
   try {
     // Test Cloudinary connection first
-    const cloudinaryTest = await testCloudinaryConnection();
-    if (!cloudinaryTest.success) {
-      console.error('Cloudinary connection test failed:', cloudinaryTest);
-      return NextResponse.json(
-        { 
-          success: false, 
-          message: 'Cloudinary service unavailable',
-          error: process.env.NODE_ENV === 'development' ? cloudinaryTest.error : undefined
-        },
-        { status: 503 }
-      );
-    }
 
     await connectToDatabase();
     
