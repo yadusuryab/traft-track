@@ -2,7 +2,6 @@
 import { NextResponse } from 'next/server';
 import { connectToDatabase } from '../../../../lib/mongodb';
 import Image from '../../../../models/Image';
-import { deleteFromCloudinary } from '../../../../lib/cloudinary';
 
 export async function GET() {
   try {
@@ -38,7 +37,6 @@ export async function DELETE(request: Request) {
       );
     }
 
-    await deleteFromCloudinary(image.publicId);
     await Image.findByIdAndDelete(id);
 
     return NextResponse.json({ success: true, message: 'Image deleted successfully' });

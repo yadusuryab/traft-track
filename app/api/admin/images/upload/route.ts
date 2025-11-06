@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // app/api/admin/images/upload/route.ts
-import { uploadToCloudinary } from '@/lib/cloudinary';
+import { uploadToCloudinary, testCloudinaryConnection } from '@/lib/cloudinary';
 import { connectToDatabase } from '@/lib/mongodb';
 import { detectDocumentType, extractTextFromImage } from '@/lib/vision';
 import Image from '@/models/Image';
@@ -8,6 +8,20 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
   try {
+    // Test Cloudinary connection first
+    const cloudinaryTest = await testCloudinaryConnection();
+    if (!cloudinaryTest.success) {
+      console.error('Cloudinary connection test failed:', cloudinaryTest);
+      return NextResponse.json(
+        { 
+          success: false, 
+          message: 'Cloudinary service unavailable',
+          error: process.env.NODE_ENV === 'development' ? cloudinaryTest.error : undefined
+        },
+        { status: 503 }
+      );
+    }
+
     await connectToDatabase();
     
     const formData = await request.formData();
@@ -23,7 +37,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validate file type
+    // Validate file type and size
     if (!file.type.startsWith('image/')) {
       return NextResponse.json(
         { success: false, message: 'File must be an image' },
@@ -31,37 +45,46 @@ export async function POST(request: Request) {
       );
     }
 
+    // Check file size (10MB limit)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      return NextResponse.json(
+        { success: false, message: 'File size must be less than 10MB' },
+        { status: 400 }
+      );
+    }
+
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    let cloudinaryResult;
+    let cloudinaryResult :any;
     try {
-      // Upload to Cloudinary
+      console.log('Uploading to Cloudinary...');
       cloudinaryResult = await uploadToCloudinary(buffer);
+      console.log('Cloudinary upload successful:', cloudinaryResult.publicId);
     } catch (cloudinaryError:any) {
       console.error('Cloudinary upload failed:', cloudinaryError);
       return NextResponse.json(
         { 
           success: false, 
-          message: 'Cloudinary upload failed',
+          message: 'Failed to upload image to cloud storage',
           error: process.env.NODE_ENV === 'development' ? cloudinaryError.message : undefined
         },
         { status: 500 }
       );
     }
 
-    let extractedData, documentType;
+    // Rest of your processing logic...
+    let extractedData:any = '';
+    let documentType = 'unknown';
+    
     try {
-      // Extract text and detect document type using Google Vision
       [extractedData, documentType] = await Promise.all([
         extractTextFromImage(buffer),
         detectDocumentType(buffer)
       ]);
     } catch (visionError) {
       console.warn('Vision API processing failed:', visionError);
-      // Continue without vision data rather than failing completely
-      extractedData = '';
-      documentType = 'unknown';
     }
 
     // Save to database
@@ -83,7 +106,7 @@ export async function POST(request: Request) {
       message: 'Image uploaded and processed successfully',
       data: image,
     });
-  } catch (error :any) {
+  } catch (error:any) {
     console.error('Upload error:', error);
     return NextResponse.json(
       { 
