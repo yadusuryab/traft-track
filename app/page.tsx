@@ -144,7 +144,7 @@ export default function HomePage() {
         {/* Hero Section with Search */}
         <div className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-            Find Your Documents
+            Find Your Packages
           </h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto mb-8">
             Search by name, phone number, or address to quickly locate your important documents
