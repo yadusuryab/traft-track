@@ -1,5 +1,5 @@
 // Update the dashboard stats API to include extracted data statistics
-// app/api/admin/dashboard/stats/route.ts
+// app/api/admin/upload/stats/route.ts
 import { NextResponse } from 'next/server';
 import { connectToDatabase } from '../../../../../lib/mongodb';
 import Image from '../../../../../models/Image';

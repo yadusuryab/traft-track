@@ -28,7 +28,7 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (data.success) {
-        router.push('/admin/dashboard');
+        router.push('/admin/upload');
         router.refresh(); // Refresh to update auth state
       } else {
         setError(data.message);
