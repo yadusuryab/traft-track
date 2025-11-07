@@ -61,19 +61,34 @@ export async function POST(request: Request) {
       );
     }
 
+    // Convert file to base64
+    console.log('Converting file to base64...');
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    console.log('File converted to buffer, size:', buffer.length, 'bytes');
+    
+    // Convert to base64 string
+    const base64String = buffer.toString('base64');
+    
+    // Create data URI for Cloudinary
+    const mimeType = file.type || 'image/jpeg';
+    const base64Data = `data:${mimeType};base64,${base64String}`;
+    
+    console.log('File converted to base64, size:', {
+      bufferSize: buffer.length,
+      base64Size: base64String.length,
+      dataUriSize: base64Data.length
+    });
 
-    // Cloudinary upload
+    // Cloudinary upload with base64
     try {
-      console.log('Starting Cloudinary upload...');
-      cloudinaryResult = await uploadToCloudinary(buffer);
+      console.log('Starting Cloudinary upload with base64...');
+      cloudinaryResult = await uploadToCloudinary(base64Data);
       console.log('Cloudinary upload successful:', {
         publicId: cloudinaryResult.publicId,
         url: cloudinaryResult.url ? 'URL received' : 'No URL',
         format: cloudinaryResult.format,
-        size: cloudinaryResult.bytes
+        size: cloudinaryResult.bytes,
+        resourceType: cloudinaryResult.resource_type
       });
     } catch (cloudinaryError: any) {
       console.error('Cloudinary upload failed:', {
@@ -91,7 +106,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Vision API processing
+    // Vision API processing (still use buffer for vision APIs)
     let extractedData: any = '';
     let documentType = 'unknown';
     
@@ -119,7 +134,11 @@ export async function POST(request: Request) {
       title,
       description,
       publicId: cloudinaryResult.publicId,
-      url: cloudinaryResult.url,
+      url: cloudinaryResult.secure_url || cloudinaryResult.url,
+      width: cloudinaryResult.width,
+      height: cloudinaryResult.height,
+      format: cloudinaryResult.format,
+      bytes: cloudinaryResult.bytes,
       extractedData,
       documentType,
       tags,
@@ -136,7 +155,9 @@ export async function POST(request: Request) {
         id: image._id,
         publicId: image.publicId,
         url: image.url,
-        title: image.title
+        title: image.title,
+        format: image.format,
+        size: image.bytes
       },
     });
 
@@ -146,7 +167,8 @@ export async function POST(request: Request) {
       stack: error.stack,
       cloudinaryResult: cloudinaryResult ? {
         publicId: cloudinaryResult.publicId,
-        hasUrl: !!cloudinaryResult.url
+        hasUrl: !!cloudinaryResult.url,
+        resourceType: cloudinaryResult.resource_type
       } : 'No cloudinary result',
       timestamp: new Date().toISOString()
     });

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // lib/cloudinary.ts
 import { v2 as cloudinary } from 'cloudinary';
 
@@ -7,32 +8,57 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-export async function uploadToCloudinary(
-  file: Buffer,
-  folder: string = 'admin-panel'
-): Promise<{ publicId: string; url: string }> {
+export const uploadToCloudinary = (file: Buffer | string): Promise<any> => {
   return new Promise((resolve, reject) => {
-    const uploadStream = cloudinary.uploader.upload_stream(
-      {
-        folder,
-        resource_type: 'image',
-      },
-      (error, result) => {
-        if (error) {
-          reject(error);
-        } else if (result) {
-          resolve({
-            publicId: result.public_id,
-            url: result.secure_url,
-          });
+    // If it's a base64 string, upload directly
+    if (typeof file === 'string' && file.startsWith('data:')) {
+      cloudinary.uploader.upload(
+        file,
+        {
+          resource_type: 'auto', // Auto-detect resource type
+          folder: 'uploads',
+          timeout: 60000,
+        },
+        (error, result) => {
+          if (error) {
+            console.error('Cloudinary base64 upload error:', error);
+            reject(error);
+          } else if (result) {
+            resolve(result);
+          } else {
+            reject(new Error('No result from Cloudinary'));
+          }
         }
-      }
-    );
-
-    uploadStream.end(file);
+      );
+    } 
+    // If it's a buffer, use upload_stream (backward compatibility)
+    else if (file instanceof Buffer) {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          resource_type: 'image',
+          folder: 'uploads',
+          timeout: 60000,
+        },
+        (error, result) => {
+          if (error) {
+            console.error('Cloudinary stream upload error:', error);
+            reject(error);
+          } else if (result) {
+            resolve(result);
+          } else {
+            reject(new Error('No result from Cloudinary'));
+          }
+        }
+      );
+      
+      uploadStream.on('error', (error) => {
+        console.error('Upload stream error:', error);
+        reject(error);
+      });
+      
+      uploadStream.end(file);
+    } else {
+      reject(new Error('Invalid file type. Expected Buffer or base64 string.'));
+    }
   });
-}
-
-export async function deleteFromCloudinary(publicId: string): Promise<void> {
-  await cloudinary.uploader.destroy(publicId);
-}
+};
