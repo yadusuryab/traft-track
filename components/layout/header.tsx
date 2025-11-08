@@ -2,6 +2,7 @@
 import React from 'react';
 import Image from 'next/image';
 import { Badge } from '../ui/badge';
+import Link from 'next/link';
 
 const Header = ({ 
   track = "Current Track", 
@@ -15,14 +16,14 @@ const Header = ({
           <div className="flex items-center space-x-2">
             {/* Logo */}
             <div className="flex-shrink-0">
-              <Image
+             <Link  href="/"> <Image
                 src="/wordmark.png"
                 alt="Company Logo"
                 width={100}
                 height={40}
                 className="h-4 w-auto"
                 priority
-              />
+              /></Link>
              
             </div>
             <Badge ><span className='font-bold italic'>TRACK</span></Badge>
