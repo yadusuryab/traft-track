@@ -192,19 +192,14 @@ export default function HomePage() {
               <div className="flex items-start space-x-3">
                 <IconInfoCircle className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
                 <div>
-                  <h4 className="font-medium text-blue-900 mb-1">Update Frequency Notice</h4>
+                  <h4 className="font-medium text-blue-900 mb-1">NOTE</h4>
                   <p className="text-blue-700 text-sm">
-                    Package information is updated every 24 hours. Your search results reflect the most recent data available. 
-                    New shipments may take up to 24 hours to appear in the system.
+                  YOUR PACKAGE TRACKING IDS ARE ONLY UPDATED HERE 24 HOURS AFTER CONFIRMING YOUR ORDER.
+                  PLEASE WAIT TILL THEN
                   </p>
                 </div>
               </div>
-              <button
-                onClick={dismissNotification}
-                className="text-blue-500 hover:text-blue-700 flex-shrink-0 ml-4"
-              >
-                <IconX className="w-4 h-4" />
-              </button>
+             
             </div>
           </div>
         )}
@@ -318,6 +313,15 @@ export default function HomePage() {
                       )}
                     </div>
                   ))}
+                </div>
+
+                {/* Tracking Instructions */}
+                <div className="mt-8 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <div className="text-center">
+                    <p className="text-yellow-800 text-sm font-medium">
+                      PLEASE USE THE TRACKING ID PROVIDED IN THE PICTURE NEAR THE BARCODE AND TRACK USING DTDC.IN OR THE RESPECTIVE COURIERS SITE SHOWN IN THE PACKAGE
+                    </p>
+                  </div>
                 </div>
 
                 {/* Pagination */}
