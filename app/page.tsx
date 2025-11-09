@@ -186,7 +186,7 @@ export default function HomePage() {
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-8">
         {/* Notification Banner */}
-        {showNotification && (
+        
           <div className="max-w-4xl mx-auto mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
             <div className="flex items-start justify-between">
               <div className="flex items-start space-x-3">
@@ -202,7 +202,7 @@ export default function HomePage() {
              
             </div>
           </div>
-        )}
+       
 
         {/* Hero Section with Search */}
         <div className="text-center mb-12">
@@ -459,7 +459,7 @@ export default function HomePage() {
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex justify-between p-4 border-t border-gray-200">
+                <div className="flex justify-end p-4 border-t border-gray-200">
                   <Button
                     onClick={handleShare}
                     variant="outline"
@@ -469,13 +469,7 @@ export default function HomePage() {
                     Share Document
                   </Button>
                   
-                  <Button
-                    onClick={handleTrack}
-                    className="flex items-center gap-2 bg-gray-900 hover:bg-gray-800"
-                  >
-                    <IconPackage className="w-4 h-4" />
-                    Track Package
-                  </Button>
+                 
                 </div>
 
                 {/* Extracted Information */}
