@@ -1,44 +1,117 @@
-// components/Header.tsx
-import React from 'react';
+'use client';
+import React, { useState } from 'react';
 import Image from 'next/image';
 import { Badge } from '../ui/badge';
 import Link from 'next/link';
+import Logo from '@/public/wordmark.png';
+import { AnimatedThemeToggler } from '../ui/animated-theme-toggler';
+import { Info, X, Instagram } from 'lucide-react';
+import { Button } from '../ui/button';
 
 const Header = ({ 
   track = "Current Track", 
   className = "" 
 }) => {
-  return (
-    <header className={`w-full bg-white  border-b border-gray-200 ${className}`}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-center h-16">
-          {/* Logo and Track Section */}
-          <div className="flex items-center space-x-2">
-            {/* Logo */}
-            <div className="flex-shrink-0">
-             <Link  href="/"> <Image
-                src="/wordmark.png"
-                alt="Company Logo"
-                width={100}
-                height={40}
-                className="h-4 w-auto"
-                priority
-              /></Link>
-             
-            </div>
-            <Badge ><span className='font-bold italic'>TRACK</span></Badge>
-            {/* Track Subtitle */}
-         
-          </div>
+  const [isPopupOpen, setIsPopupOpen] = useState(false);
 
-          {/* Optional: Add navigation or other header elements here */}
-         
+  const openPopup = () => setIsPopupOpen(true);
+  const closePopup = () => setIsPopupOpen(false);
+
+  return (
+    <>
+      <header className={`w-full ${className}`}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            {/* Info Button */}
+            <Button 
+              size={'icon'} 
+              variant={'secondary'} 
+              onClick={openPopup}
+            >
+              <Info/>
+            </Button>
+
+            {/* Logo and Track Section */}
+            <div className="flex items-center space-x-2">
+              {/* Logo */}
+              <div className="flex-shrink-0">
+                <Link href="/">
+                  <Image
+                    src={Logo.src}
+                    alt="Company Logo"
+                    width={100}
+                    height={40}
+                    className={`h-6 w-auto dark:brightness(0) dark:invert dark:saturate-0 dark:contrast(1)`}
+                    priority
+                  />
+                </Link>
+              </div>
+            </div>
+           
+            <Button size={'icon'} variant={'secondary'}>
+              <AnimatedThemeToggler/>
+            </Button>
+          </div>
         </div>
-        
-        {/* Mobile track display */}
-       
-      </div>
-    </header>
+      </header>
+
+      {/* Popup Overlay */}
+      {isPopupOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xl flex items-center justify-center z-50 p-4">
+          <div className="bg-background rounded-3xl shadow-xl max-w-md w-full p-6 relative">
+            {/* Close Button */}
+            <Button
+              size="icon"
+              variant="ghost"
+              className="absolute top-4 right-4"
+              onClick={closePopup}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+
+            {/* Popup Content */}
+            <div className="space-y-4">
+              <h2 className="text-xl font-bold tracking-tighter">
+                Copyright Information
+              </h2>
+              
+              <div className="space-y-3">
+                <p className="tracking-tight font-semibold text-muted-foreground">
+                  © {new Date().getFullYear()} Traft. All rights reserved.
+                </p>
+                
+              <div className='flex justify-between bg-muted rounded-xl p-4'>
+              <div className="flex items-center space-x-1 tracking-tighter italic font-semibold">
+                  <span className="text-muted-foreground">Made by</span>
+                  <span className="font-semibold text-foreground dark:text-white">Shopigo</span>
+                </div>
+
+                {/* Instagram Link */}
+                <Link 
+                    href="https://instagram.com/getshopigo" 
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                <Button size={'sm'}>
+                 
+                    <Instagram />
+                    <span>@getshopigo</span>
+                  
+                </Button></Link>
+              </div>
+              </div>
+
+              {/* Additional Info */}
+              <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                <p className="text-sm tracking-tight italic text-gray-500 dark:text-gray-400">
+                  This application is proudly powered by Shopigo.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 
