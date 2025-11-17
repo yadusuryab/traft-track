@@ -5,148 +5,236 @@ import { connectToDatabase } from '@/lib/mongodb';
 import { detectDocumentType, extractTextFromImage } from '@/lib/vision';
 import Image from '@/models/Image';
 import { NextResponse } from 'next/server';
+import sharp from 'sharp';
 
 export async function POST(request: Request) {
   let cloudinaryResult: any = null;
   
   try {
     console.log('=== IMAGE UPLOAD PROCESS STARTED ===');
-    console.log('Environment:', process.env.NODE_ENV);
-    console.log('Timestamp:', new Date().toISOString());
 
-    // Test database connection
-    console.log('Connecting to database...');
-    await connectToDatabase();
-    console.log('Database connected successfully');
+    // Test database connection first
+    try {
+      await connectToDatabase();
+      console.log('✅ Database connected successfully');
+    } catch (dbError: any) {
+      console.error('❌ Database connection failed:', dbError.message);
+      return NextResponse.json(
+        { success: false, message: 'Database connection failed' },
+        { status: 500 }
+      );
+    }
 
     const formData = await request.formData();
     const file = formData.get('image') as File;
     const title = formData.get('title') as string;
     const description = formData.get('description') as string;
-    const tags = (formData.get('tags') as string)?.split(',').map(tag => tag.trim()) || [];
+    const tags = formData.get('tags') as string;
 
-    console.log('Form data received:', {
+    console.log('📁 Form data received:', {
       hasFile: !!file,
       fileName: file?.name,
       fileType: file?.type,
       fileSize: file?.size,
-      title: title?.substring(0, 50),
-      tagsCount: tags.length
+      title: title,
+      description: description ? 'Provided' : 'Missing',
+      tags: tags ? 'Provided' : 'Missing'
     });
 
+    // Validate required fields
     if (!file) {
-      console.error('No file uploaded');
+      console.error('❌ No file uploaded');
       return NextResponse.json(
         { success: false, message: 'No file uploaded' },
         { status: 400 }
       );
     }
 
-    // Validate file type and size
+    if (!title || title.trim().length === 0) {
+      console.error('❌ Title is required');
+      return NextResponse.json(
+        { success: false, message: 'Title is required' },
+        { status: 400 }
+      );
+    }
+
     if (!file.type.startsWith('image/')) {
-      console.error('Invalid file type:', file.type);
+      console.error('❌ Invalid file type:', file.type);
       return NextResponse.json(
         { success: false, message: 'File must be an image' },
         { status: 400 }
       );
     }
 
-    // Check file size (10MB limit)
-    const maxSize = 10 * 1024 * 1024;
-    if (file.size > maxSize) {
-      console.error('File too large:', file.size, 'bytes');
+    console.log('🔄 Processing image file...');
+    const bytess = await file.arrayBuffer();
+    let buffer = Buffer.from(bytess);
+    
+    console.log('📊 Original image size:', buffer.length, 'bytes');
+
+    // Set max size to 1MB
+    const maxSize = 1 * 1024 * 1024;
+    
+    // Always compress images to ensure they're under 1MB
+    console.log('⚡ Compressing image to under 1MB...');
+    
+    try {
+      const image = sharp(buffer);
+      const metadata = await image.metadata();
+      
+      console.log('🖼️ Image metadata:', {
+        format: metadata.format,
+        width: metadata.width,
+        height: metadata.height,
+        size: buffer.length
+      });
+
+      // Progressive compression to get under 1MB
+      let quality = 85;
+      let compressedBuffer = buffer;
+      
+      while (quality >= 50 && compressedBuffer.length > maxSize) {
+        console.log(`🔄 Trying compression with quality: ${quality}%`);
+        
+        compressedBuffer = await sharp(buffer)
+          .jpeg({ 
+            quality: quality,
+            mozjpeg: true,
+            chromaSubsampling: '4:4:4' // Better text clarity
+          })
+          .resize(1600, 1600, {
+            fit: 'inside',
+            withoutEnlargement: true
+          })
+          .toBuffer();
+        
+        console.log(`📦 Compressed to: ${compressedBuffer.length} bytes with quality ${quality}%`);
+        
+        // Reduce quality for next iteration if still too large
+        if (compressedBuffer.length > maxSize) {
+          quality -= 10;
+        } else {
+          break;
+        }
+      }
+      
+      buffer = compressedBuffer;
+      console.log('✅ Final compressed size:', buffer.length, 'bytes');
+
+    } catch (sharpError: any) {
+      console.warn('⚠️ Sharp compression failed, using original:', sharpError.message);
+      // If compression fails and original is still too large, return error
+      if (buffer.length > maxSize) {
+        console.error('❌ File too large after compression failure:', buffer.length, 'bytes');
+        return NextResponse.json(
+          { success: false, message: 'File is too large and could not be compressed' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Final size check after compression
+    if (buffer.length > maxSize) {
+      console.error('❌ File still too large after compression:', buffer.length, 'bytes');
       return NextResponse.json(
-        { success: false, message: 'File size must be less than 10MB' },
+        { 
+          success: false, 
+          message: `File size (${Math.round(buffer.length / 1024)}KB) exceeds 1MB limit after compression` 
+        },
         { status: 400 }
       );
     }
 
-    // Convert file to base64
-    console.log('Converting file to base64...');
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-    
-    // Convert to base64 string
+    // Convert to base64 for Cloudinary
     const base64String = buffer.toString('base64');
-    
-    // Create data URI for Cloudinary
-    const mimeType = file.type || 'image/jpeg';
+    const mimeType = 'image/jpeg'; // Always use JPEG after compression
     const base64Data = `data:${mimeType};base64,${base64String}`;
     
-    console.log('File converted to base64, size:', {
-      bufferSize: buffer.length,
-      base64Size: base64String.length,
-      dataUriSize: base64Data.length
-    });
-
-    // Cloudinary upload with base64
+    console.log('☁️ Uploading to Cloudinary...');
     try {
-      console.log('Starting Cloudinary upload with base64...');
       cloudinaryResult = await uploadToCloudinary(base64Data);
-      console.log('Cloudinary upload successful:', {
-        publicId: cloudinaryResult.publicId,
-        url: cloudinaryResult.url ? 'URL received' : 'No URL',
-        format: cloudinaryResult.format,
-        size: cloudinaryResult.bytes,
-        resourceType: cloudinaryResult.resource_type
-      });
+      console.log('✅ Cloudinary upload successful - Full response:', JSON.stringify(cloudinaryResult, null, 2));
     } catch (cloudinaryError: any) {
-      console.error('Cloudinary upload failed:', {
-        error: cloudinaryError.message,
-        stack: cloudinaryError.stack,
-        response: cloudinaryError.response?.body
-      });
+      console.error('❌ Cloudinary upload failed:', cloudinaryError.message);
       return NextResponse.json(
         { 
           success: false, 
-          message: 'Failed to upload image to cloud storage',
-          error: process.env.NODE_ENV === 'development' ? cloudinaryError.message : 'Upload failed'
+          message: 'Failed to upload image to cloud storage'
         },
         { status: 500 }
       );
     }
 
-    // Vision API processing (still use buffer for vision APIs)
-    let extractedData: any = '';
-    let documentType = 'unknown';
+    // Debug: Check Cloudinary response structure
+    console.log('🔍 Cloudinary response keys:', Object.keys(cloudinaryResult));
+    
+    // Extract Cloudinary fields - use the exact field names from your uploadToCloudinary function
+    const publicId = cloudinaryResult.publicId; // This is the field name from your function
+    const url = cloudinaryResult.url; // This is the field name from your function
+    const width = cloudinaryResult.width;
+    const height = cloudinaryResult.height;
+    const format = cloudinaryResult.format;
+    const bytes = cloudinaryResult.bytes || buffer.length;
+
+    console.log('📋 Extracted Cloudinary data:', {
+      publicId: publicId ? 'Found' : 'Missing',
+      url: url ? 'Found' : 'Missing',
+      width,
+      height,
+      format,
+      bytes
+    });
+
+    // Validate required Cloudinary fields
+    if (!publicId || !url) {
+      console.error('❌ Missing required Cloudinary fields:', {
+        publicId: !!publicId,
+        url: !!url
+      });
+      throw new Error('Cloudinary response missing required fields');
+    }
+
+    // Vision API processing
+    let extractedData: any = { rawText: '' };
+    let documentType = 'general';
     
     try {
-      console.log('Starting Vision API processing...');
+      console.log('🔍 Starting OCR processing...');
       [extractedData, documentType] = await Promise.all([
         extractTextFromImage(buffer),
         detectDocumentType(buffer)
       ]);
-      console.log('Vision API processing completed:', {
+      console.log('✅ OCR processing completed:', {
         documentType,
-        extractedDataLength: extractedData?.length || 0
+        textLength: extractedData?.rawText?.length || 0
       });
     } catch (visionError: any) {
-      console.warn('Vision API processing failed:', {
-        error: visionError.message,
-        stack: visionError.stack
-      });
-      // Continue without vision data
+      console.warn('⚠️ Vision API processing failed:', visionError.message);
+      // Continue with default values
     }
 
+    // Parse tags
+    const parsedTags = tags ? tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0) : [];
+
     // Save to database
-    console.log('Saving to database...');
+    console.log('💾 Saving to database...');
     const image = new Image({
-      title,
-      description,
-      publicId: cloudinaryResult.publicId,
-      url: cloudinaryResult.secure_url || cloudinaryResult.url,
-      width: cloudinaryResult.width,
-      height: cloudinaryResult.height,
-      format: cloudinaryResult.format,
-      bytes: cloudinaryResult.bytes,
+      title: title.trim(),
+      description: description?.trim() || '',
+      publicId: publicId,
+      url: url,
+      width: width,
+      height: height,
+      format: format,
+      bytes: bytes,
       extractedData,
       documentType,
-      tags,
+      tags: parsedTags,
       uploadedBy: 'admin',
     });
 
     await image.save();
-    console.log('Database save successful, image ID:', image._id);
+    console.log('✅ Database save successful, image ID:', image._id);
 
     return NextResponse.json({
       success: true,
@@ -157,20 +245,17 @@ export async function POST(request: Request) {
         url: image.url,
         title: image.title,
         format: image.format,
-        size: image.bytes
+        size: image.bytes,
+        documentType: image.documentType,
+        textLength: image.extractedData?.rawText?.length || 0
       },
     });
 
   } catch (error: any) {
-    console.error('=== UPLOAD PROCESS FAILED ===', {
+    console.error('❌ UPLOAD PROCESS FAILED:', {
       error: error.message,
       stack: error.stack,
-      cloudinaryResult: cloudinaryResult ? {
-        publicId: cloudinaryResult.publicId,
-        hasUrl: !!cloudinaryResult.url,
-        resourceType: cloudinaryResult.resource_type
-      } : 'No cloudinary result',
-      timestamp: new Date().toISOString()
+      cloudinaryResult: cloudinaryResult ? 'Uploaded' : 'Failed'
     });
 
     return NextResponse.json(

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// lib/vision.ts - Using REST API instead of client library
+// lib/vision-ocrspace.ts - Using OCR.space Free API
 export interface ExtractedData {
   name?: string;
   phoneNumber?: string;
@@ -8,50 +8,44 @@ export interface ExtractedData {
   rawText: string;
 }
 
-async function callVisionAPI(base64Image: string, featureType: 'TEXT_DETECTION' | 'DOCUMENT_TEXT_DETECTION' = 'TEXT_DETECTION'): Promise<any> {
-  const apiKey = process.env.GOOGLE_VISION_API_KEY;
+async function callOCRSpaceAPI(base64Image: string): Promise<any> {
+  const apiKey = process.env.OCR_SPACE_API_KEY || 'helloworld'; // 'helloworld' is the free public key
   
-  if (!apiKey) {
-    throw new Error('GOOGLE_VISION_API_KEY environment variable is required');
-  }
+  const formData = new URLSearchParams();
+  formData.append('base64Image', `data:image/jpeg;base64,${base64Image}`);
+  formData.append('apikey', apiKey);
+  formData.append('language', 'eng');
+  formData.append('isOverlayRequired', 'false');
+  formData.append('OCREngine', '2'); // Engine 2 is more accurate
+  formData.append('scale', 'true');
+  formData.append('isTable', 'true');
 
-  const url = `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`;
-  
-  const requestBody = {
-    requests: [
-      {
-        image: {
-          content: base64Image,
-        },
-        features: [
-          {
-            type: featureType,
-            maxResults: 1,
-          },
-        ],
-      },
-    ],
-  };
-
-  const response = await fetch(url, {
+  const response = await fetch('https://api.ocr.space/parse/image', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded'
     },
-    body: JSON.stringify(requestBody),
+    body: formData
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Vision API request failed: ${response.status} ${response.statusText} - ${errorText}`);
+    throw new Error(`OCR.space API request failed: ${response.status} ${response.statusText} - ${errorText}`);
   }
 
-  return await response.json();
+  const result = await response.json();
+  
+  // Check for OCR.space specific errors
+  if (result.IsErroredOnProcessing) {
+    throw new Error(result.ErrorMessage[0] || 'OCR.space processing failed');
+  }
+
+  return result;
 }
 
 export async function extractTextFromImage(imageBuffer: Buffer | string): Promise<ExtractedData> {
   try {
-    console.log('Starting text extraction from image...');
+    console.log('Starting text extraction from image with OCR.space...');
     
     // Handle both Buffer and base64 string inputs
     let imageContent: string;
@@ -70,22 +64,25 @@ export async function extractTextFromImage(imageBuffer: Buffer | string): Promis
       imageContent = imageBuffer.toString('base64');
     }
 
-    console.log('Calling Vision API via REST...');
-    const result = await callVisionAPI(imageContent, 'TEXT_DETECTION');
+    console.log('Calling OCR.space API...');
+    const result = await callOCRSpaceAPI(imageContent);
 
-    const textAnnotations = result.responses?.[0]?.textAnnotations;
+    const parsedResults = result.ParsedResults;
     let rawText = '';
     
-    if (textAnnotations && textAnnotations.length > 0) {
-      rawText = textAnnotations[0].description || '';
+    if (parsedResults && parsedResults.length > 0) {
+      rawText = parsedResults[0].ParsedText || '';
       console.log('Raw text extracted, length:', rawText.length);
+      
+      // Clean up common OCR.space artifacts
+      rawText = rawText.replace(/\r\n/g, '\n').trim();
     } else {
       console.log('No text detected in image');
     }
 
     return parseExtractedData(rawText);
   } catch (error: any) {
-    console.error('Error extracting text from image:', {
+    console.error('Error extracting text from image with OCR.space:', {
       error: error.message,
       stack: error.stack
     });
@@ -98,7 +95,7 @@ export async function extractTextFromImage(imageBuffer: Buffer | string): Promis
 
 export async function detectDocumentType(imageBuffer: Buffer | string): Promise<string> {
   try {
-    console.log('Detecting document type...');
+    console.log('Detecting document type with OCR.space...');
     
     let imageContent: string;
     
@@ -116,8 +113,9 @@ export async function detectDocumentType(imageBuffer: Buffer | string): Promise<
       imageContent = imageBuffer.toString('base64');
     }
 
-    const result = await callVisionAPI(imageContent, 'DOCUMENT_TEXT_DETECTION');
-    const text = result.responses?.[0]?.fullTextAnnotation?.text || '';
+    const result = await callOCRSpaceAPI(imageContent);
+    const parsedResults = result.ParsedResults;
+    const text = parsedResults && parsedResults.length > 0 ? parsedResults[0].ParsedText || '' : '';
     
     console.log('Document text for type detection, length:', text.length);
 
@@ -136,14 +134,84 @@ export async function detectDocumentType(imageBuffer: Buffer | string): Promise<
     
     return 'general';
   } catch (error: any) {
-    console.error('Error detecting document type:', error.message);
+    console.error('Error detecting document type with OCR.space:', error.message);
     return 'general';
   }
 }
 
-// Keep your existing parseExtractedData function
+// Enhanced version with OCR.space specific improvements
+export async function extractTextWithOCRSpaceAdvanced(imageBuffer: Buffer | string): Promise<ExtractedData> {
+  try {
+    console.log('Starting advanced text extraction with OCR.space...');
+    
+    let imageContent: string;
+    
+    if (typeof imageBuffer === 'string') {
+      if (imageBuffer.startsWith('data:')) {
+        const base64Part = imageBuffer.split(',')[1];
+        if (!base64Part) {
+          throw new Error('Invalid base64 data URI format');
+        }
+        imageContent = base64Part;
+      } else {
+        imageContent = imageBuffer;
+      }
+    } else {
+      imageContent = imageBuffer.toString('base64');
+    }
+
+    // Try different OCR engines for better accuracy
+    const engines = [1, 2]; // Engine 1 is faster, Engine 2 is more accurate
+    const bestResult = { rawText: '' };
+    
+    for (const engine of engines) {
+      try {
+        console.log(`Trying OCR Engine ${engine}...`);
+        
+        const formData = new URLSearchParams();
+        formData.append('base64Image', `data:image/jpeg;base64,${imageContent}`);
+        formData.append('apikey', process.env.OCR_SPACE_API_KEY || 'helloworld');
+        formData.append('language', 'eng');
+        formData.append('isOverlayRequired', 'false');
+        formData.append('OCREngine', engine.toString());
+        
+        const response = await fetch('https://api.ocr.space/parse/image', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: formData
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          if (!result.IsErroredOnProcessing && result.ParsedResults?.[0]?.ParsedText) {
+            const text = result.ParsedResults[0].ParsedText.replace(/\r\n/g, '\n').trim();
+            
+            // Use the result with more text as the best result
+            if (text.length > bestResult.rawText.length) {
+              bestResult.rawText = text;
+            }
+          }
+        }
+      } catch (engineError) {
+        console.warn(`OCR Engine ${engine} failed:`, engineError);
+      }
+    }
+
+    console.log('Best raw text extracted, length:', bestResult.rawText.length);
+    return parseExtractedData(bestResult.rawText);
+    
+  } catch (error: any) {
+    console.error('Error in advanced OCR.space extraction:', error.message);
+    return {
+      rawText: '',
+    };
+  }
+}
+
+// Your existing parseExtractedData function (unchanged)
 function parseExtractedData(rawText: string): ExtractedData {
-  // ... your existing parseExtractedData function ...
   if (!rawText || rawText.trim().length === 0) {
     return { rawText: '' };
   }
