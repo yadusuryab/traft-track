@@ -69,8 +69,8 @@ export async function POST(request: Request) {
     console.log('🔄 Processing image file...');
     const fileData = await file.arrayBuffer();
     
-    // Convert ArrayBuffer to Buffer
-    const originalBuffer = Buffer.from(new Uint8Array(fileData));
+    // Fix: Create Buffer properly for both local and production
+    const originalBuffer = Buffer.from(fileData);
     
     console.log('📊 Original image size:', originalBuffer.length, 'bytes');
 
