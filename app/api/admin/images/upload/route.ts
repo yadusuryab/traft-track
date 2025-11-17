@@ -67,10 +67,9 @@ export async function POST(request: Request) {
     }
 
     console.log('🔄 Processing image file...');
-    const fileData = await file.arrayBuffer();
+    const arrayBuffer = await file.arrayBuffer();
+    const originalBuffer = Buffer.from(arrayBuffer) as Buffer;
     
-    // Fix: Create Buffer properly for both local and production
-    const originalBuffer = Buffer.from(fileData);
     
     console.log('📊 Original image size:', originalBuffer.length, 'bytes');
 
@@ -78,7 +77,7 @@ export async function POST(request: Request) {
     const maxSize = 1 * 1024 * 1024;
     
     // Compress image function
-    const compressImage = async (inputBuffer: Buffer): Promise<Buffer> => {
+const compressImage = async (inputBuffer: Buffer): Promise<Buffer> => {
       try {
         const imageProcessor = sharp(inputBuffer);
         const imageInfo = await imageProcessor.metadata();
@@ -131,7 +130,7 @@ export async function POST(request: Request) {
     };
 
     // Compress the image
-    let processedBuffer = originalBuffer;
+    let processedBuffer: Buffer = originalBuffer;
     if (originalBuffer.length > maxSize) {
       console.log('⚡ Compressing image to under 1MB...');
       processedBuffer = await compressImage(originalBuffer);
