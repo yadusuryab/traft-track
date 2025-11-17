@@ -68,7 +68,9 @@ export async function POST(request: Request) {
 
     console.log('🔄 Processing image file...');
     const bytess = await file.arrayBuffer();
-    let buffer = Buffer.from(bytess);
+    
+    // Fix: Properly convert ArrayBuffer to Buffer
+    const buffer = Buffer.from(new Uint8Array(bytess));
     
     console.log('📊 Original image size:', buffer.length, 'bytes');
 
@@ -77,6 +79,8 @@ export async function POST(request: Request) {
     
     // Always compress images to ensure they're under 1MB
     console.log('⚡ Compressing image to under 1MB...');
+    
+    let compressedBuffer = buffer;
     
     try {
       const image = sharp(buffer);
@@ -91,12 +95,11 @@ export async function POST(request: Request) {
 
       // Progressive compression to get under 1MB
       let quality = 85;
-      let compressedBuffer = buffer;
       
       while (quality >= 50 && compressedBuffer.length > maxSize) {
         console.log(`🔄 Trying compression with quality: ${quality}%`);
         
-        compressedBuffer = await sharp(buffer)
+        const compressionResult = await sharp(buffer)
           .jpeg({ 
             quality: quality,
             mozjpeg: true,
@@ -108,7 +111,9 @@ export async function POST(request: Request) {
           })
           .toBuffer();
         
-        console.log(`📦 Compressed to: ${compressedBuffer.length} bytes with quality ${quality}%`);
+        console.log(`📦 Compressed to: ${compressionResult.length} bytes with quality ${quality}%`);
+        
+        compressedBuffer = compressionResult;
         
         // Reduce quality for next iteration if still too large
         if (compressedBuffer.length > maxSize) {
@@ -118,14 +123,13 @@ export async function POST(request: Request) {
         }
       }
       
-      buffer = compressedBuffer;
-      console.log('✅ Final compressed size:', buffer.length, 'bytes');
+      console.log('✅ Final compressed size:', compressedBuffer.length, 'bytes');
 
     } catch (sharpError: any) {
       console.warn('⚠️ Sharp compression failed, using original:', sharpError.message);
       // If compression fails and original is still too large, return error
-      if (buffer.length > maxSize) {
-        console.error('❌ File too large after compression failure:', buffer.length, 'bytes');
+      if (compressedBuffer.length > maxSize) {
+        console.error('❌ File too large after compression failure:', compressedBuffer.length, 'bytes');
         return NextResponse.json(
           { success: false, message: 'File is too large and could not be compressed' },
           { status: 400 }
@@ -134,19 +138,19 @@ export async function POST(request: Request) {
     }
 
     // Final size check after compression
-    if (buffer.length > maxSize) {
-      console.error('❌ File still too large after compression:', buffer.length, 'bytes');
+    if (compressedBuffer.length > maxSize) {
+      console.error('❌ File still too large after compression:', compressedBuffer.length, 'bytes');
       return NextResponse.json(
         { 
           success: false, 
-          message: `File size (${Math.round(buffer.length / 1024)}KB) exceeds 1MB limit after compression` 
+          message: `File size (${Math.round(compressedBuffer.length / 1024)}KB) exceeds 1MB limit after compression` 
         },
         { status: 400 }
       );
     }
 
     // Convert to base64 for Cloudinary
-    const base64String = buffer.toString('base64');
+    const base64String = compressedBuffer.toString('base64');
     const mimeType = 'image/jpeg'; // Always use JPEG after compression
     const base64Data = `data:${mimeType};base64,${base64String}`;
     
@@ -174,7 +178,7 @@ export async function POST(request: Request) {
     const width = cloudinaryResult.width;
     const height = cloudinaryResult.height;
     const format = cloudinaryResult.format;
-    const bytes = cloudinaryResult.bytes || buffer.length;
+    const bytes = cloudinaryResult.bytes || compressedBuffer.length;
 
     console.log('📋 Extracted Cloudinary data:', {
       publicId: publicId ? 'Found' : 'Missing',
@@ -201,8 +205,8 @@ export async function POST(request: Request) {
     try {
       console.log('🔍 Starting OCR processing...');
       [extractedData, documentType] = await Promise.all([
-        extractTextFromImage(buffer),
-        detectDocumentType(buffer)
+        extractTextFromImage(compressedBuffer),
+        detectDocumentType(compressedBuffer)
       ]);
       console.log('✅ OCR processing completed:', {
         documentType,
