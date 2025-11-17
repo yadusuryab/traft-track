@@ -67,97 +67,97 @@ export async function POST(request: Request) {
     }
 
     console.log('🔄 Processing image file...');
-    const bytess = await file.arrayBuffer();
+    const fileData = await file.arrayBuffer();
     
-    // Fix: Properly convert ArrayBuffer to Buffer
-    const buffer = Buffer.from(new Uint8Array(bytess));
+    // Convert ArrayBuffer to Buffer
+    const originalBuffer = Buffer.from(new Uint8Array(fileData));
     
-    console.log('📊 Original image size:', buffer.length, 'bytes');
+    console.log('📊 Original image size:', originalBuffer.length, 'bytes');
 
     // Set max size to 1MB
     const maxSize = 1 * 1024 * 1024;
     
-    // Always compress images to ensure they're under 1MB
-    console.log('⚡ Compressing image to under 1MB...');
-    
-    let compressedBuffer = buffer;
-    
-    try {
-      const image = sharp(buffer);
-      const metadata = await image.metadata();
-      
-      console.log('🖼️ Image metadata:', {
-        format: metadata.format,
-        width: metadata.width,
-        height: metadata.height,
-        size: buffer.length
-      });
+    // Compress image function
+    const compressImage = async (inputBuffer: Buffer): Promise<Buffer> => {
+      try {
+        const imageProcessor = sharp(inputBuffer);
+        const imageInfo = await imageProcessor.metadata();
+        
+        console.log('🖼️ Image metadata:', {
+          format: imageInfo.format,
+          width: imageInfo.width,
+          height: imageInfo.height,
+          size: inputBuffer.length
+        });
 
-      // Progressive compression to get under 1MB
-      let quality = 85;
-      
-      while (quality >= 50 && compressedBuffer.length > maxSize) {
-        console.log(`🔄 Trying compression with quality: ${quality}%`);
+        // Progressive compression to get under 1MB
+        let currentQuality = 85;
+        let compressedResult = inputBuffer;
         
-        const compressionResult = await sharp(buffer)
-          .jpeg({ 
-            quality: quality,
-            mozjpeg: true,
-            chromaSubsampling: '4:4:4' // Better text clarity
-          })
-          .resize(1600, 1600, {
-            fit: 'inside',
-            withoutEnlargement: true
-          })
-          .toBuffer();
-        
-        console.log(`📦 Compressed to: ${compressionResult.length} bytes with quality ${quality}%`);
-        
-        compressedBuffer = compressionResult;
-        
-        // Reduce quality for next iteration if still too large
-        if (compressedBuffer.length > maxSize) {
-          quality -= 10;
-        } else {
-          break;
+        while (currentQuality >= 50 && compressedResult.length > maxSize) {
+          console.log(`🔄 Trying compression with quality: ${currentQuality}%`);
+          
+          const trialBuffer = await sharp(inputBuffer)
+            .jpeg({ 
+              quality: currentQuality,
+              mozjpeg: true,
+              chromaSubsampling: '4:4:4'
+            })
+            .resize(1600, 1600, {
+              fit: 'inside',
+              withoutEnlargement: true
+            })
+            .toBuffer();
+          
+          console.log(`📦 Compressed to: ${trialBuffer.length} bytes with quality ${currentQuality}%`);
+          
+          // Check if we're under the size limit
+          if (trialBuffer.length <= maxSize) {
+            return trialBuffer;
+          }
+          
+          // Reduce quality for next iteration if still too large
+          currentQuality -= 10;
+          compressedResult = trialBuffer;
         }
+        
+        console.log('✅ Final compressed size:', compressedResult.length, 'bytes');
+        return compressedResult;
+        
+      } catch (compressionError: any) {
+        console.warn('⚠️ Sharp compression failed, using original:', compressionError.message);
+        return inputBuffer;
       }
-      
-      console.log('✅ Final compressed size:', compressedBuffer.length, 'bytes');
+    };
 
-    } catch (sharpError: any) {
-      console.warn('⚠️ Sharp compression failed, using original:', sharpError.message);
-      // If compression fails and original is still too large, return error
-      if (compressedBuffer.length > maxSize) {
-        console.error('❌ File too large after compression failure:', compressedBuffer.length, 'bytes');
-        return NextResponse.json(
-          { success: false, message: 'File is too large and could not be compressed' },
-          { status: 400 }
-        );
-      }
+    // Compress the image
+    let processedBuffer = originalBuffer;
+    if (originalBuffer.length > maxSize) {
+      console.log('⚡ Compressing image to under 1MB...');
+      processedBuffer = await compressImage(originalBuffer);
     }
 
     // Final size check after compression
-    if (compressedBuffer.length > maxSize) {
-      console.error('❌ File still too large after compression:', compressedBuffer.length, 'bytes');
+    if (processedBuffer.length > maxSize) {
+      console.error('❌ File still too large after compression:', processedBuffer.length, 'bytes');
       return NextResponse.json(
         { 
           success: false, 
-          message: `File size (${Math.round(compressedBuffer.length / 1024)}KB) exceeds 1MB limit after compression` 
+          message: `File size (${Math.round(processedBuffer.length / 1024)}KB) exceeds 1MB limit after compression` 
         },
         { status: 400 }
       );
     }
 
     // Convert to base64 for Cloudinary
-    const base64String = compressedBuffer.toString('base64');
-    const mimeType = 'image/jpeg'; // Always use JPEG after compression
-    const base64Data = `data:${mimeType};base64,${base64String}`;
+    const base64Image = processedBuffer.toString('base64');
+    const mimeType = 'image/jpeg';
+    const base64Data = `data:${mimeType};base64,${base64Image}`;
     
     console.log('☁️ Uploading to Cloudinary...');
     try {
       cloudinaryResult = await uploadToCloudinary(base64Data);
-      console.log('✅ Cloudinary upload successful - Full response:', JSON.stringify(cloudinaryResult, null, 2));
+      console.log('✅ Cloudinary upload successful');
     } catch (cloudinaryError: any) {
       console.error('❌ Cloudinary upload failed:', cloudinaryError.message);
       return NextResponse.json(
@@ -169,16 +169,13 @@ export async function POST(request: Request) {
       );
     }
 
-    // Debug: Check Cloudinary response structure
-    console.log('🔍 Cloudinary response keys:', Object.keys(cloudinaryResult));
-    
-    // Extract Cloudinary fields - use the exact field names from your uploadToCloudinary function
-    const publicId = cloudinaryResult.publicId; // This is the field name from your function
-    const url = cloudinaryResult.url; // This is the field name from your function
+    // Extract Cloudinary fields
+    const publicId = cloudinaryResult.publicId;
+    const url = cloudinaryResult.url;
     const width = cloudinaryResult.width;
     const height = cloudinaryResult.height;
     const format = cloudinaryResult.format;
-    const bytes = cloudinaryResult.bytes || compressedBuffer.length;
+    const fileSize = cloudinaryResult.bytes || processedBuffer.length;
 
     console.log('📋 Extracted Cloudinary data:', {
       publicId: publicId ? 'Found' : 'Missing',
@@ -186,7 +183,7 @@ export async function POST(request: Request) {
       width,
       height,
       format,
-      bytes
+      fileSize
     });
 
     // Validate required Cloudinary fields
@@ -205,8 +202,8 @@ export async function POST(request: Request) {
     try {
       console.log('🔍 Starting OCR processing...');
       [extractedData, documentType] = await Promise.all([
-        extractTextFromImage(compressedBuffer),
-        detectDocumentType(compressedBuffer)
+        extractTextFromImage(processedBuffer),
+        detectDocumentType(processedBuffer)
       ]);
       console.log('✅ OCR processing completed:', {
         documentType,
@@ -214,15 +211,14 @@ export async function POST(request: Request) {
       });
     } catch (visionError: any) {
       console.warn('⚠️ Vision API processing failed:', visionError.message);
-      // Continue with default values
     }
 
     // Parse tags
-    const parsedTags = tags ? tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0) : [];
+    const tagList = tags ? tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0) : [];
 
     // Save to database
     console.log('💾 Saving to database...');
-    const image = new Image({
+    const imageDoc = new Image({
       title: title.trim(),
       description: description?.trim() || '',
       publicId: publicId,
@@ -230,28 +226,28 @@ export async function POST(request: Request) {
       width: width,
       height: height,
       format: format,
-      bytes: bytes,
+      bytes: fileSize,
       extractedData,
       documentType,
-      tags: parsedTags,
+      tags: tagList,
       uploadedBy: 'admin',
     });
 
-    await image.save();
-    console.log('✅ Database save successful, image ID:', image._id);
+    await imageDoc.save();
+    console.log('✅ Database save successful, image ID:', imageDoc._id);
 
     return NextResponse.json({
       success: true,
       message: 'Image uploaded and processed successfully',
       data: {
-        id: image._id,
-        publicId: image.publicId,
-        url: image.url,
-        title: image.title,
-        format: image.format,
-        size: image.bytes,
-        documentType: image.documentType,
-        textLength: image.extractedData?.rawText?.length || 0
+        id: imageDoc._id,
+        publicId: imageDoc.publicId,
+        url: imageDoc.url,
+        title: imageDoc.title,
+        format: imageDoc.format,
+        size: imageDoc.bytes,
+        documentType: imageDoc.documentType,
+        textLength: imageDoc.extractedData?.rawText?.length || 0
       },
     });
 
