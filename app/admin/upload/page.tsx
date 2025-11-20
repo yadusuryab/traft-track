@@ -26,15 +26,7 @@ export default function UploadPage() {
 
     const files = Array.from(e.target.files);
     
-    // Limit to 15 files
-    const selectedFiles = files.slice(0, 15 - uploadItems.length);
-    
-    if (selectedFiles.length === 0) {
-      setGlobalError('Maximum 15 files allowed. Please remove some files to add more.');
-      return;
-    }
-
-    const newItems: UploadItem[] = selectedFiles.map(file => ({
+    const newItems: UploadItem[] = files.map(file => ({
       id: Date.now().toString() + Math.random(),
       file,
       previewUrl: URL.createObjectURL(file),
@@ -206,7 +198,7 @@ export default function UploadPage() {
               Select images to upload
             </span>
             <span className="mt-1 block text-sm text-gray-500">
-              Drag and drop or click to select multiple files (max 15)
+              Drag and drop or click to select multiple files
             </span>
             <span className="mt-1 block text-xs text-gray-400">
               Supported: JPG, PNG, PDF, etc. - Titles and descriptions will be auto-generated
@@ -222,9 +214,6 @@ export default function UploadPage() {
             <div>
               <span className="font-semibold text-blue-800">
                 {uploadItems.length} file{uploadItems.length !== 1 ? 's' : ''} selected
-              </span>
-              <span className="text-blue-600 ml-2">
-                ({15 - uploadItems.length} remaining)
               </span>
             </div>
             {successCount > 0 && (
